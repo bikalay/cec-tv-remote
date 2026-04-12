@@ -81,10 +81,26 @@ sync_app_files() {
   install -d -m 0755 "${INSTALL_DIR}"
   install -m 0644 "${SCRIPT_DIR}/cec_remote.py" "${INSTALL_DIR}/cec_remote.py"
   install -m 0644 "${SCRIPT_DIR}/cec_tray.py" "${INSTALL_DIR}/cec_tray.py"
+  install -m 0644 "${SCRIPT_DIR}/config.py" "${INSTALL_DIR}/config.py"
   install -m 0644 "${SCRIPT_DIR}/requirements.txt" "${INSTALL_DIR}/requirements.txt"
   install -d -m 0755 "${INSTALL_DIR}/packaging"
   install -m 0644 "${SCRIPT_DIR}/packaging/cec-remote.service.in" "${INSTALL_DIR}/packaging/cec-remote.service.in"
   install -m 0644 "${SCRIPT_DIR}/packaging/cec-tray.desktop.in" "${INSTALL_DIR}/packaging/cec-tray.desktop.in"
+  install -m 0644 "${SCRIPT_DIR}/packaging/config.toml.in" "${INSTALL_DIR}/packaging/config.toml.in"
+}
+
+install_user_config() {
+  local config_dir="${RUN_HOME}/.config/cec-tv-remote"
+  local config_path="${config_dir}/config.toml"
+  local run_group
+
+  run_group="$(id -gn "${RUN_USER}")"
+
+  install -d -o "${RUN_USER}" -g "${run_group}" -m 0755 "${config_dir}"
+  if [[ ! -f "${config_path}" ]]; then
+    install -o "${RUN_USER}" -g "${run_group}" -m 0644 \
+      "${SCRIPT_DIR}/packaging/config.toml.in" "${config_path}"
+  fi
 }
 
 setup_venv() {
@@ -107,6 +123,7 @@ install_service() {
   sed \
     -e "s|__INSTALL_DIR__|${INSTALL_DIR}|g" \
     -e "s|__RUN_USER__|${RUN_USER}|g" \
+    -e "s|__RUN_HOME__|${RUN_HOME}|g" \
     "${INSTALL_DIR}/packaging/cec-remote.service.in" > "${service_path}"
 
   systemctl daemon-reload
@@ -175,6 +192,7 @@ main() {
   fi
 
   sync_app_files
+  install_user_config
   setup_venv
   fix_permissions
   install_service

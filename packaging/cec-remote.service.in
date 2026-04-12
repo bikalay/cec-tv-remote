@@ -4,6 +4,8 @@ After=multi-user.target
 
 [Service]
 Type=simple
+Environment=HOME=__RUN_HOME__
+Environment=CEC_REMOTE_CONFIG=__RUN_HOME__/.config/cec-tv-remote/config.toml
 WorkingDirectory=__INSTALL_DIR__
 ExecStart=__INSTALL_DIR__/.venv/bin/python __INSTALL_DIR__/cec_remote.py
 Restart=always

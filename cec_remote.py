@@ -1,24 +1,20 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
+import logging
 import subprocess
 import threading
 import time
-from pathlib import Path
 
 from evdev import UInput, ecodes as e
 
-CEC_DEV = "/dev/cec1"
-PHYS_ADDR = "2.0.0.0"
+from config import AppConfig, configure_logging, load_app_config
 
-STATE_FILE = Path("/tmp/cec-remote-mode")
+LOGGER = logging.getLogger("cec_remote")
 
 IDLE_REACTIVATE_SECS = 8
 DOUBLE_SELECT_WINDOW = 0.35
 LONG_SELECT_SECS = 0.65
-
-MOUSE_BASE_STEP = 42
-MOUSE_ACCEL_FACTOR = 1.30
-MOUSE_MAX_STEP = 180
-MOUSE_ACCEL_WINDOW = 0.28
 
 DIR_TO_KEY = {
     "up": e.KEY_UP,
@@ -27,27 +23,9 @@ DIR_TO_KEY = {
     "right": e.KEY_RIGHT,
 }
 
-mouse_ui = UInput(
-    {
-        e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT],
-        e.EV_REL: [e.REL_X, e.REL_Y],
-    },
-    name="CEC TV Remote Mouse",
-)
-
-key_ui = UInput(
-    {
-        e.EV_KEY: [
-            e.KEY_UP,
-            e.KEY_DOWN,
-            e.KEY_LEFT,
-            e.KEY_RIGHT,
-            e.KEY_ENTER,
-            e.KEY_ESC,
-        ],
-    },
-    name="CEC TV Remote Keys",
-)
+CONFIG: AppConfig
+mouse_ui: UInput
+key_ui: UInput
 
 last_event_ts = time.monotonic()
 last_activate_ts = 0.0
@@ -79,18 +57,18 @@ def run_cmd(args: list[str]) -> None:
 
 def write_mode_state() -> None:
     try:
-        STATE_FILE.write_text(mode + "\n")
+        CONFIG.state_file.write_text(mode + "\n")
     except Exception:
-        pass
+        LOGGER.exception("Failed to write mode state to %s", CONFIG.state_file)
 
 
 def configure_cec() -> None:
-    run_cmd(["/usr/bin/cec-ctl", "-d", CEC_DEV, "--clear"])
+    run_cmd(["/usr/bin/cec-ctl", "-d", CONFIG.cec_dev, "--clear"])
     run_cmd(
         [
             "/usr/bin/cec-ctl",
             "-d",
-            CEC_DEV,
+            CONFIG.cec_dev,
             "--playback",
             "--no-rc-passthrough",
             "--osd-name",
@@ -120,9 +98,9 @@ def activate_source(force: bool = False) -> None:
             [
                 "/usr/bin/cec-ctl",
                 "-d",
-                CEC_DEV,
+                CONFIG.cec_dev,
                 "--active-source",
-                f"phys-addr={PHYS_ADDR}",
+                f"phys-addr={CONFIG.phys_addr}",
             ]
         )
         time.sleep(0.25)
@@ -130,7 +108,7 @@ def activate_source(force: bool = False) -> None:
             [
                 "/usr/bin/cec-ctl",
                 "-d",
-                CEC_DEV,
+                CONFIG.cec_dev,
                 "--to",
                 "0",
                 "--image-view-on",
@@ -178,7 +156,7 @@ def next_mouse_step(cmd: str) -> int:
 
     now = time.monotonic()
 
-    if cmd == last_move_cmd and (now - last_move_ts) <= MOUSE_ACCEL_WINDOW:
+    if cmd == last_move_cmd and (now - last_move_ts) <= CONFIG.mouse_accel_window:
         move_streak += 1
     else:
         move_streak = 1
@@ -186,8 +164,8 @@ def next_mouse_step(cmd: str) -> int:
     last_move_cmd = cmd
     last_move_ts = now
 
-    step = int(MOUSE_BASE_STEP * (MOUSE_ACCEL_FACTOR ** (move_streak - 1)))
-    return min(step, MOUSE_MAX_STEP)
+    step = int(CONFIG.mouse_base_step * (CONFIG.mouse_accel_factor ** (move_streak - 1)))
+    return min(step, CONFIG.mouse_max_step)
 
 
 def move_mouse_for_cmd(cmd: str) -> None:
@@ -208,6 +186,7 @@ def toggle_mode() -> None:
     mode = "keyboard" if mode == "mouse" else "mouse"
     write_mode_state()
     reset_mouse_accel()
+    LOGGER.info("Input mode switched to %s", mode)
 
 
 def delayed_single_select(expected_ts: float) -> None:
@@ -316,7 +295,11 @@ def handle_released_cmd() -> None:
 def handle_line(line: str) -> None:
     global last_event_ts, pending_user_control_press, standby_suppressed
 
-    line = line.strip()
+    raw_line = line.rstrip()
+    if raw_line and LOGGER.isEnabledFor(logging.DEBUG):
+        LOGGER.debug("CEC line: %s", raw_line)
+
+    line = raw_line.strip()
     if not line:
         return
 
@@ -335,7 +318,7 @@ def handle_line(line: str) -> None:
         reset_mouse_accel()
         return
 
-    if "SET_STREAM_PATH" in line and f"phys-addr: {PHYS_ADDR}" in line:
+    if "SET_STREAM_PATH" in line and f"phys-addr: {CONFIG.phys_addr}" in line:
         standby_suppressed = False
         time.sleep(0.4)
         wake_video_output()
@@ -345,7 +328,7 @@ def handle_line(line: str) -> None:
         pending_user_control_press = False
         return
 
-    if "ROUTING_CHANGE" in line and f"new-phys-addr: {PHYS_ADDR}" in line:
+    if "ROUTING_CHANGE" in line and f"new-phys-addr: {CONFIG.phys_addr}" in line:
         standby_suppressed = False
         time.sleep(0.4)
         wake_video_output()
@@ -362,6 +345,7 @@ def handle_line(line: str) -> None:
     if pending_user_control_press and "ui-cmd:" in line:
         cmd = line.split("ui-cmd:", 1)[1].strip().split()[0].lower()
         pending_user_control_press = False
+        LOGGER.info("Received CEC command: %s", cmd)
         handle_pressed_cmd(cmd)
         return
 
@@ -371,8 +355,50 @@ def handle_line(line: str) -> None:
         return
 
 
+def initialize_inputs() -> None:
+    global mouse_ui, key_ui
+
+    mouse_ui = UInput(
+        {
+            e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT],
+            e.EV_REL: [e.REL_X, e.REL_Y],
+        },
+        name="CEC TV Remote Mouse",
+    )
+
+    key_ui = UInput(
+        {
+            e.EV_KEY: [
+                e.KEY_UP,
+                e.KEY_DOWN,
+                e.KEY_LEFT,
+                e.KEY_RIGHT,
+                e.KEY_ENTER,
+                e.KEY_ESC,
+            ],
+        },
+        name="CEC TV Remote Keys",
+    )
+
+
 def main() -> None:
-    global last_event_ts, mode, pending_user_control_press, standby_suppressed
+    global CONFIG, last_event_ts, mode, pending_user_control_press, standby_suppressed
+
+    CONFIG = load_app_config()
+    configure_logging(CONFIG.log_level)
+    LOGGER.info(
+        "Loaded config: cec_dev=%s phys_addr=%s state_file=%s mouse_base_step=%s mouse_accel_factor=%s mouse_max_step=%s mouse_accel_window=%s log_level=%s",
+        CONFIG.cec_dev,
+        CONFIG.phys_addr,
+        CONFIG.state_file,
+        CONFIG.mouse_base_step,
+        CONFIG.mouse_accel_factor,
+        CONFIG.mouse_max_step,
+        CONFIG.mouse_accel_window,
+        CONFIG.log_level,
+    )
+
+    initialize_inputs()
 
     mode = "mouse"
     pending_user_control_press = False
@@ -387,7 +413,7 @@ def main() -> None:
     threading.Thread(target=watchdog, daemon=True).start()
 
     proc = subprocess.Popen(
-        ["/usr/bin/cec-ctl", "-d", CEC_DEV, "--monitor"],
+        ["/usr/bin/cec-ctl", "-d", CONFIG.cec_dev, "--monitor"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -409,4 +435,5 @@ if __name__ == "__main__":
         except KeyboardInterrupt:
             break
         except Exception:
+            LOGGER.exception("cec_remote crashed; restarting in 1 second")
             time.sleep(1)

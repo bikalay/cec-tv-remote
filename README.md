@@ -46,6 +46,7 @@ The repository includes an install script that:
 
 - installs OS packages with `apt` when available
 - copies the app into `/opt/cec-tv-remote`
+- creates `~/.config/cec-tv-remote/config.toml` for the selected install user
 - creates a Python virtual environment
 - installs Python dependencies
 - installs and starts a systemd service
@@ -101,6 +102,7 @@ sudo ./install.sh --user pi
 - app files: `/opt/cec-tv-remote`
 - Python virtualenv: `/opt/cec-tv-remote/.venv`
 - systemd service: `/etc/systemd/system/cec-tv-remote.service`
+- user config: `~/.config/cec-tv-remote/config.toml`
 - tray autostart: `~/.config/autostart/cec-tray.desktop`
 
 ## Service Management
@@ -113,10 +115,66 @@ systemctl restart cec-tv-remote.service
 journalctl -u cec-tv-remote.service -f
 ```
 
+## Configuration
+
+Runtime configuration is stored in:
+
+```bash
+~/.config/cec-tv-remote/config.toml
+```
+
+Default contents:
+
+```toml
+[cec]
+device = "/dev/cec1"
+phys_addr = "2.0.0.0"
+
+[state]
+file = "/tmp/cec-remote-mode"
+
+[mouse]
+base_step = 42
+accel_factor = 1.30
+max_step = 180
+accel_window = 0.28
+
+[logging]
+level = "INFO"
+```
+
+Supported settings:
+
+- `cec.device`: CEC device path, for example `/dev/cec1`
+- `cec.phys_addr`: HDMI physical address used for active-source handling
+- `state.file`: file used to share the current mode between the service and tray app
+- `mouse.base_step`: initial cursor movement step
+- `mouse.accel_factor`: movement acceleration multiplier for repeated directional presses
+- `mouse.max_step`: maximum cursor movement step
+- `mouse.accel_window`: time window in seconds for chaining accelerated movement
+- `logging.level`: log level for the service, such as `INFO` or `DEBUG`
+
+For raw CEC debugging, set:
+
+```toml
+[logging]
+level = "DEBUG"
+```
+
+Then restart the service and follow journald:
+
+```bash
+sudo systemctl restart cec-tv-remote.service
+sudo journalctl -u cec-tv-remote.service -f
+```
+
+At `DEBUG` level, the service logs every received line from `cec-ctl --monitor`.
+
 ## Repository Layout
 
 - `cec_remote.py`: main HDMI-CEC to input bridge
 - `cec_tray.py`: tray icon that shows the current mode
+- `config.py`: shared config loader and logging setup
 - `install.sh`: installer
 - `requirements.txt`: Python dependencies
 - `packaging/`: service and desktop entry templates
@@ -147,4 +205,4 @@ That workflow produces:
 - the installer is currently optimized for Debian-based systems such as Raspberry Pi OS
 - on non-Debian Linux distributions, use `--skip-deps` and install the required packages manually
 - the tray app is optional and mainly useful on desktop systems, not headless installs
-- the service uses `systemd-inhibit` to keep the machine from suspending; if the Pi fully suspends, `cec_remote.py` cannot receive CEC routing events to wake itself
+- the system service runs as root so it can access `/dev/uinput` and other device nodes needed for virtual input injection

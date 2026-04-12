@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import threading
 import time
-from pathlib import Path
 
 import pystray
 from PIL import Image, ImageDraw
 
-STATE_FILE = Path("/tmp/cec-remote-mode")
+from config import load_app_config
+
+CONFIG = load_app_config()
 
 
 def make_icon(bg: str, fg: str) -> Image.Image:
@@ -26,7 +27,7 @@ ICONS = {
 
 def read_mode() -> str:
     try:
-        value = STATE_FILE.read_text().strip()
+        value = CONFIG.state_file.read_text().strip()
         if value in ("mouse", "keyboard"):
             return value
     except Exception:

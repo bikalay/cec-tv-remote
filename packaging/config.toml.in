@@ -1,0 +1,15 @@
+[cec]
+device = "/dev/cec1"
+phys_addr = "2.0.0.0"
+
+[state]
+file = "/tmp/cec-remote-mode"
+
+[mouse]
+base_step = 42
+accel_factor = 1.30
+max_step = 180
+accel_window = 0.28
+
+[logging]
+level = "INFO"
