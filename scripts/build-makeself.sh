@@ -35,4 +35,6 @@ makeself \
   "CEC TV Remote Installer (${VERSION})" \
   ./installer_entrypoint.sh
 
+chmod +x "${OUTPUT_RUN}"
+
 printf 'Created: %s\n' "${OUTPUT_RUN}"
