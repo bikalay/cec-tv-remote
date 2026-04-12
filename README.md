@@ -51,6 +51,17 @@ The repository includes an install script that:
 - installs and starts a systemd service
 - optionally installs a desktop autostart entry for the tray app
 
+### Install From Self-Extracting Installer
+
+Download the `.run` release and execute it:
+
+```bash
+chmod +x cec-tv-remote-<version>.run
+./cec-tv-remote-<version>.run --user pi
+```
+
+The `.run` package extracts the payload and starts the installer automatically. If root privileges are required, it tries `pkexec` first and then `sudo`.
+
 ### Install From Release Archive
 
 1. Download `cec-tv-remote-<version>.tar.gz` from GitHub Releases.
@@ -128,6 +139,7 @@ git push origin v1.0.0
 That workflow produces:
 
 - a workflow artifact with `cec-tv-remote-v1.0.0.tar.gz`
+- a self-extracting installer `cec-tv-remote-v1.0.0.run`
 - a GitHub Release attachment for tag builds
 
 ## Notes

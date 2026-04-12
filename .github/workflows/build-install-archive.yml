@@ -21,7 +21,13 @@ jobs:
         run: python3 -m py_compile cec_remote.py cec_tray.py
 
       - name: Validate installer
-        run: bash -n install.sh
+        run: |
+          bash -n install.sh
+          bash -n installer_entrypoint.sh
+          bash -n scripts/build-makeself.sh
+
+      - name: Install makeself
+        run: sudo apt-get update && sudo apt-get install -y makeself
 
       - name: Prepare archive staging directory
         run: |
@@ -31,24 +37,35 @@ jobs:
           cp requirements.txt dist/cec-tv-remote/
           cp README.md dist/cec-tv-remote/
           cp install.sh dist/cec-tv-remote/
+          cp installer_entrypoint.sh dist/cec-tv-remote/
           mkdir -p dist/cec-tv-remote/packaging
           cp packaging/cec-remote.service.in dist/cec-tv-remote/packaging/
           cp packaging/cec-tray.desktop.in dist/cec-tv-remote/packaging/
-          chmod +x dist/cec-tv-remote/install.sh
+          chmod +x dist/cec-tv-remote/install.sh dist/cec-tv-remote/installer_entrypoint.sh
 
       - name: Create tar.gz archive
         run: |
           VERSION="${GITHUB_REF_NAME:-manual}"
           tar -C dist -czf "cec-tv-remote-${VERSION}.tar.gz" cec-tv-remote
 
+      - name: Create self-extracting installer
+        run: |
+          VERSION="${GITHUB_REF_NAME:-manual}"
+          chmod +x scripts/build-makeself.sh
+          ./scripts/build-makeself.sh "${VERSION}"
+
       - name: Upload archive artifact
         uses: actions/upload-artifact@v4
         with:
           name: cec-tv-remote-${{ github.ref_name || 'manual' }}
-          path: cec-tv-remote-*.tar.gz
+          path: |
+            cec-tv-remote-*.tar.gz
+            cec-tv-remote-*.run
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: cec-tv-remote-*.tar.gz
+          files: |
+            cec-tv-remote-*.tar.gz
+            cec-tv-remote-*.run
