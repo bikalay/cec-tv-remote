@@ -94,6 +94,12 @@ setup_venv() {
   "${INSTALL_DIR}/.venv/bin/pip" install -r "${INSTALL_DIR}/requirements.txt"
 }
 
+fix_permissions() {
+  log "normalizing install permissions"
+  chmod -R a+rX "${INSTALL_DIR}"
+  chmod a+rx "${INSTALL_DIR}/.venv/bin/python" "${INSTALL_DIR}/.venv/bin/pip"
+}
+
 install_service() {
   local service_path="/etc/systemd/system/${SERVICE_NAME}"
 
@@ -170,6 +176,7 @@ main() {
 
   sync_app_files
   setup_venv
+  fix_permissions
   install_service
 
   if [[ "${INSTALL_TRAY}" -eq 1 ]]; then
