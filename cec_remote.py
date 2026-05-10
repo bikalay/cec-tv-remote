@@ -46,13 +46,16 @@ standby_suppressed = False
 
 
 def run_cmd(args: list[str]) -> None:
-    subprocess.run(
-        args,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
+    try:
+        subprocess.run(
+            args,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+        )
+    except FileNotFoundError:
+        LOGGER.debug("Optional command not available: %s", args[0])
 
 
 def write_mode_state() -> None:
@@ -352,6 +355,21 @@ def handle_line(line: str) -> None:
     if "USER_CONTROL_RELEASED" in line:
         pending_user_control_press = False
         handle_released_cmd()
+        return
+
+    if "ACTIVE_SOURCE" in line and f"phys-addr: {CONFIG.phys_addr}" not in line:
+        standby_suppressed = True
+        pending_user_control_press = False
+        reset_mouse_accel()
+        return
+    if "ACTIVE_SOURCE" in line and f"phys-addr: {CONFIG.phys_addr}" in line:
+        standby_suppressed = False
+        time.sleep(0.4)
+        wake_video_output()
+        configure_cec()
+        activate_source()
+        reset_mouse_accel()
+        pending_user_control_press = False
         return
 
 
