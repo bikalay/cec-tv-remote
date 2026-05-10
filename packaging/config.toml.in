@@ -5,11 +5,14 @@ phys_addr = "2.0.0.0"
 [state]
 file = "/tmp/cec-remote-mode"
 
+[wake]
+wayland_output = "HDMI-A-1"
+
 [mouse]
-base_step = 42
+base_step = 20
 accel_factor = 1.30
 max_step = 180
 accel_window = 0.28
 
 [logging]
-level = "INFO"
+level = "DEBUG"

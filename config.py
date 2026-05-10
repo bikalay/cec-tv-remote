@@ -13,6 +13,7 @@ class AppConfig:
     cec_dev: str
     phys_addr: str
     state_file: Path
+    wayland_output: str
     mouse_base_step: int
     mouse_accel_factor: float
     mouse_max_step: int
@@ -49,6 +50,7 @@ def load_app_config() -> AppConfig:
 
     cec = raw.get("cec", {})
     state = raw.get("state", {})
+    wake = raw.get("wake", {})
     mouse = raw.get("mouse", {})
     logging_cfg = raw.get("logging", {})
 
@@ -56,6 +58,8 @@ def load_app_config() -> AppConfig:
         cec = {}
     if not isinstance(state, dict):
         state = {}
+    if not isinstance(wake, dict):
+        wake = {}
     if not isinstance(mouse, dict):
         mouse = {}
     if not isinstance(logging_cfg, dict):
@@ -65,7 +69,8 @@ def load_app_config() -> AppConfig:
         cec_dev=_coerce_str(cec.get("device"), "/dev/cec1"),
         phys_addr=_coerce_str(cec.get("phys_addr"), "2.0.0.0"),
         state_file=Path(_coerce_str(state.get("file"), "/tmp/cec-remote-mode")),
-        mouse_base_step=_coerce_int(mouse.get("base_step"), 42),
+        wayland_output=_coerce_str(wake.get("wayland_output"), "HDMI-A-1"),
+        mouse_base_step=_coerce_int(mouse.get("base_step"), 20),
         mouse_accel_factor=_coerce_float(mouse.get("accel_factor"), 1.30),
         mouse_max_step=_coerce_int(mouse.get("max_step"), 180),
         mouse_accel_window=_coerce_float(mouse.get("accel_window"), 0.28),

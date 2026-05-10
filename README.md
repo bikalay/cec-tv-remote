@@ -133,6 +133,9 @@ phys_addr = "2.0.0.0"
 [state]
 file = "/tmp/cec-remote-mode"
 
+[wake]
+wayland_output = "HDMI-A-1"
+
 [mouse]
 base_step = 42
 accel_factor = 1.30
@@ -148,6 +151,7 @@ Supported settings:
 - `cec.device`: CEC device path, for example `/dev/cec1`
 - `cec.phys_addr`: HDMI physical address used for active-source handling
 - `state.file`: file used to share the current mode between the service and tray app
+- `wake.wayland_output`: Wayland output name used for `wlr-randr --output <name> --on`
 - `mouse.base_step`: initial cursor movement step
 - `mouse.accel_factor`: movement acceleration multiplier for repeated directional presses
 - `mouse.max_step`: maximum cursor movement step

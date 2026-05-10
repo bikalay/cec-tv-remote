@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 import subprocess
 import threading
 import time
 
-from evdev import UInput, ecodes as e
+from evdev import UInput, ecodes as e # type: ignore[import]
 
 from config import AppConfig, configure_logging, load_app_config
 
@@ -41,11 +43,11 @@ last_move_cmd = None
 last_move_ts = 0.0
 move_streak = 0
 
-pending_user_control_press = False
+pending_event_type: str | None = None
 standby_suppressed = False
 
 
-def run_cmd(args: list[str]) -> None:
+def run_cmd(args: list[str], env: dict[str, str] | None = None) -> None:
     try:
         subprocess.run(
             args,
@@ -53,9 +55,69 @@ def run_cmd(args: list[str]) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             text=True,
+            env=env,
         )
     except FileNotFoundError:
         LOGGER.debug("Optional command not available: %s", args[0])
+
+
+def run_cmd_ok(args: list[str], env: dict[str, str] | None = None) -> bool:
+    try:
+        proc = subprocess.run(
+            args,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            env=env,
+        )
+    except FileNotFoundError:
+        LOGGER.debug("Optional command not available: %s", args[0])
+        return False
+
+    return proc.returncode == 0
+
+
+def runtime_dir_for_home() -> Path | None:
+    try:
+        uid = Path.home().stat().st_uid
+    except OSError:
+        return None
+    return Path("/run/user") / str(uid)
+
+
+def wake_wayland_output() -> bool:
+    runtime_dir = runtime_dir_for_home()
+    if runtime_dir is None or not runtime_dir.is_dir():
+        return False
+
+    wayland_sockets = sorted(runtime_dir.glob("wayland-*"))
+    if not wayland_sockets:
+        return False
+
+    env = os.environ.copy()
+    env["XDG_RUNTIME_DIR"] = str(runtime_dir)
+
+    for socket_path in wayland_sockets:
+        env["WAYLAND_DISPLAY"] = socket_path.name
+        if run_cmd_ok(
+            ["/usr/bin/wlr-randr", "--output", CONFIG.wayland_output, "--on"],
+            env=env,
+        ):
+            return True
+
+    return False
+
+
+def wake_x11_output() -> bool:
+    xauthority = Path.home() / ".Xauthority"
+    if not xauthority.exists():
+        return False
+
+    env = os.environ.copy()
+    env.setdefault("DISPLAY", ":0")
+    env["XAUTHORITY"] = str(xauthority)
+    return run_cmd_ok(["/usr/bin/xset", "dpms", "force", "on"], env=env)
 
 
 def write_mode_state() -> None:
@@ -81,10 +143,9 @@ def configure_cec() -> None:
 
 
 def wake_video_output() -> None:
-    # Best effort for Raspberry Pi and similar Linux setups where the
-    # video pipeline blanks after inactivity.
-    run_cmd(["/usr/bin/vcgencmd", "display_power", "1"])
-    run_cmd(["/usr/bin/tvservice", "-p"])
+    if wake_wayland_output():
+        return
+    wake_x11_output()
 
 
 def activate_source(force: bool = False) -> None:
@@ -269,11 +330,30 @@ def watchdog() -> None:
             reset_mouse_accel()
 
 
+def handle_route_to_self() -> None:
+    global standby_suppressed, pending_event_type
+
+    standby_suppressed = False
+    pending_event_type = None
+    time.sleep(0.4)
+    wake_video_output()
+    configure_cec()
+    activate_source()
+    reset_mouse_accel()
+
+
+def handle_route_away() -> None:
+    global standby_suppressed, pending_event_type
+
+    standby_suppressed = True
+    pending_event_type = None
+    reset_mouse_accel()
+
+
 def handle_pressed_cmd(cmd: str) -> None:
     global current_pressed_cmd
     current_pressed_cmd = cmd
     wake_video_output()
-    activate_source()
 
     if cmd in {"up", "down", "left", "right"}:
         handle_direction_press(cmd)
@@ -296,80 +376,81 @@ def handle_released_cmd() -> None:
 
 
 def handle_line(line: str) -> None:
-    global last_event_ts, pending_user_control_press, standby_suppressed
+    global last_event_ts, pending_event_type, standby_suppressed
 
     raw_line = line.rstrip()
-    if raw_line and LOGGER.isEnabledFor(logging.DEBUG):
-        LOGGER.debug("CEC line: %s", raw_line)
+    if raw_line:
+        LOGGER.debug("CEC RAW line: %s", raw_line)
 
     line = raw_line.strip()
     if not line:
         return
-
-    if (
-        "USER_CONTROL_PRESSED" in line
-        or "USER_CONTROL_RELEASED" in line
-        or "SET_STREAM_PATH" in line
-        or "ROUTING_CHANGE" in line
-        or "ACTIVE_SOURCE" in line
-    ):
-        last_event_ts = time.monotonic()
+    LOGGER.info("CEC line: %s", line)
 
     if "STANDBY" in line:
         standby_suppressed = True
-        pending_user_control_press = False
+        pending_event_type = None
         reset_mouse_accel()
-        return
-
-    if "SET_STREAM_PATH" in line and f"phys-addr: {CONFIG.phys_addr}" in line:
-        standby_suppressed = False
-        time.sleep(0.4)
-        wake_video_output()
-        configure_cec()
-        activate_source()
-        reset_mouse_accel()
-        pending_user_control_press = False
-        return
-
-    if "ROUTING_CHANGE" in line and f"new-phys-addr: {CONFIG.phys_addr}" in line:
-        standby_suppressed = False
-        time.sleep(0.4)
-        wake_video_output()
-        configure_cec()
-        activate_source()
-        reset_mouse_accel()
-        pending_user_control_press = False
         return
 
     if "USER_CONTROL_PRESSED" in line:
-        pending_user_control_press = True
+        last_event_ts = time.monotonic()
+        pending_event_type = "user_control_pressed"
         return
 
-    if pending_user_control_press and "ui-cmd:" in line:
+    if "USER_CONTROL_RELEASED" in line:
+        last_event_ts = time.monotonic()
+        pending_event_type = None
+        handle_released_cmd()
+        return
+
+    if "SET_STREAM_PATH" in line:
+        last_event_ts = time.monotonic()
+        pending_event_type = "set_stream_path"
+        return
+
+    if "ROUTING_CHANGE" in line:
+        last_event_ts = time.monotonic()
+        pending_event_type = "routing_change"
+        return
+
+    if "ACTIVE_SOURCE" in line:
+        last_event_ts = time.monotonic()
+        pending_event_type = "active_source"
+        return
+
+    if pending_event_type == "user_control_pressed" and "ui-cmd:" in line:
         cmd = line.split("ui-cmd:", 1)[1].strip().split()[0].lower()
-        pending_user_control_press = False
+        pending_event_type = None
         LOGGER.info("Received CEC command: %s", cmd)
         handle_pressed_cmd(cmd)
         return
 
-    if "USER_CONTROL_RELEASED" in line:
-        pending_user_control_press = False
-        handle_released_cmd()
+    if pending_event_type == "set_stream_path" and line.startswith("phys-addr:"):
+        last_event_ts = time.monotonic()
+        phys_addr = line.split(":", 1)[1].strip().split()[0]
+        if phys_addr == CONFIG.phys_addr:
+            handle_route_to_self()
+        else:
+            handle_route_away()
         return
 
-    if "ACTIVE_SOURCE" in line and f"phys-addr: {CONFIG.phys_addr}" not in line:
-        standby_suppressed = True
-        pending_user_control_press = False
-        reset_mouse_accel()
+    if pending_event_type == "routing_change" and line.startswith("new-phys-addr:"):
+        last_event_ts = time.monotonic()
+        phys_addr = line.split(":", 1)[1].strip().split()[0]
+        if phys_addr == CONFIG.phys_addr:
+            handle_route_to_self()
+        else:
+            handle_route_away()
         return
-    if "ACTIVE_SOURCE" in line and f"phys-addr: {CONFIG.phys_addr}" in line:
-        standby_suppressed = False
-        time.sleep(0.4)
-        wake_video_output()
-        configure_cec()
-        activate_source()
-        reset_mouse_accel()
-        pending_user_control_press = False
+
+    if pending_event_type == "active_source" and line.startswith("phys-addr:"):
+        last_event_ts = time.monotonic()
+        phys_addr = line.split(":", 1)[1].strip().split()[0]
+        if phys_addr == CONFIG.phys_addr:
+            handle_route_to_self()
+        else:
+            handle_route_away()
         return
 
 
@@ -400,15 +481,16 @@ def initialize_inputs() -> None:
 
 
 def main() -> None:
-    global CONFIG, last_event_ts, mode, pending_user_control_press, standby_suppressed
+    global CONFIG, last_event_ts, mode, pending_event_type, standby_suppressed
 
     CONFIG = load_app_config()
     configure_logging(CONFIG.log_level)
     LOGGER.info(
-        "Loaded config: cec_dev=%s phys_addr=%s state_file=%s mouse_base_step=%s mouse_accel_factor=%s mouse_max_step=%s mouse_accel_window=%s log_level=%s",
+        "Loaded config: cec_dev=%s phys_addr=%s state_file=%s wayland_output=%s mouse_base_step=%s mouse_accel_factor=%s mouse_max_step=%s mouse_accel_window=%s log_level=%s",
         CONFIG.cec_dev,
         CONFIG.phys_addr,
         CONFIG.state_file,
+        CONFIG.wayland_output,
         CONFIG.mouse_base_step,
         CONFIG.mouse_accel_factor,
         CONFIG.mouse_max_step,
@@ -419,7 +501,7 @@ def main() -> None:
     initialize_inputs()
 
     mode = "mouse"
-    pending_user_control_press = False
+    pending_event_type = None
     standby_suppressed = False
     write_mode_state()
 
