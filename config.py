@@ -71,7 +71,7 @@ def load_app_config() -> AppConfig:
         state_file=Path(_coerce_str(state.get("file"), "/tmp/cec-remote-mode")),
         wayland_output=_coerce_str(wake.get("wayland_output"), "HDMI-A-1"),
         mouse_base_step=_coerce_int(mouse.get("base_step"), 20),
-        mouse_accel_factor=_coerce_float(mouse.get("accel_factor"), 1.30),
+        mouse_accel_factor=_coerce_float(mouse.get("accel_factor"), 1.20),
         mouse_max_step=_coerce_int(mouse.get("max_step"), 180),
         mouse_accel_window=_coerce_float(mouse.get("accel_window"), 0.28),
         log_level=_coerce_str(logging_cfg.get("level"), "INFO").upper(),

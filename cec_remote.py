@@ -46,22 +46,7 @@ move_streak = 0
 pending_event_type: str | None = None
 standby_suppressed = False
 
-
-def run_cmd(args: list[str], env: dict[str, str] | None = None) -> None:
-    try:
-        subprocess.run(
-            args,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            env=env,
-        )
-    except FileNotFoundError:
-        LOGGER.debug("Optional command not available: %s", args[0])
-
-
-def run_cmd_ok(args: list[str], env: dict[str, str] | None = None) -> bool:
+def run_cmd(args: list[str], env: dict[str, str] | None = None) -> bool:
     try:
         proc = subprocess.run(
             args,
@@ -72,7 +57,7 @@ def run_cmd_ok(args: list[str], env: dict[str, str] | None = None) -> bool:
             env=env,
         )
     except FileNotFoundError:
-        LOGGER.debug("Optional command not available: %s", args[0])
+        LOGGER.exception("Optional command not available: %s", args[0])
         return False
 
     return proc.returncode == 0
@@ -100,7 +85,7 @@ def wake_wayland_output() -> bool:
 
     for socket_path in wayland_sockets:
         env["WAYLAND_DISPLAY"] = socket_path.name
-        if run_cmd_ok(
+        if run_cmd(
             ["/usr/bin/wlr-randr", "--output", CONFIG.wayland_output, "--on"],
             env=env,
         ):
@@ -117,7 +102,7 @@ def wake_x11_output() -> bool:
     env = os.environ.copy()
     env.setdefault("DISPLAY", ":0")
     env["XAUTHORITY"] = str(xauthority)
-    return run_cmd_ok(["/usr/bin/xset", "dpms", "force", "on"], env=env)
+    return run_cmd(["/usr/bin/xset", "dpms", "force", "on"], env=env)
 
 
 def write_mode_state() -> None:
@@ -129,6 +114,7 @@ def write_mode_state() -> None:
 
 def configure_cec() -> None:
     run_cmd(["/usr/bin/cec-ctl", "-d", CONFIG.cec_dev, "--clear"])
+    time.sleep(0.25)
     run_cmd(
         [
             "/usr/bin/cec-ctl",
@@ -385,7 +371,6 @@ def handle_line(line: str) -> None:
     line = raw_line.strip()
     if not line:
         return
-    LOGGER.info("CEC line: %s", line)
 
     if "STANDBY" in line:
         standby_suppressed = True

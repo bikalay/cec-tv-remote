@@ -83,6 +83,9 @@ sync_app_files() {
   install -m 0644 "${SCRIPT_DIR}/cec_tray.py" "${INSTALL_DIR}/cec_tray.py"
   install -m 0644 "${SCRIPT_DIR}/config.py" "${INSTALL_DIR}/config.py"
   install -m 0644 "${SCRIPT_DIR}/requirements.txt" "${INSTALL_DIR}/requirements.txt"
+  install -d -m 0755 "${INSTALL_DIR}/assets"
+  install -m 0644 "${SCRIPT_DIR}/assets/mouse.png" "${INSTALL_DIR}/assets/mouse.png"
+  install -m 0644 "${SCRIPT_DIR}/assets/keyboard.png" "${INSTALL_DIR}/assets/keyboard.png"
   install -d -m 0755 "${INSTALL_DIR}/packaging"
   install -m 0644 "${SCRIPT_DIR}/packaging/cec-remote.service.in" "${INSTALL_DIR}/packaging/cec-remote.service.in"
   install -m 0644 "${SCRIPT_DIR}/packaging/cec-tray.desktop.in" "${INSTALL_DIR}/packaging/cec-tray.desktop.in"
@@ -141,6 +144,7 @@ install_tray_autostart() {
   install -d -o "${RUN_USER}" -g "${run_group}" -m 0755 "${autostart_dir}"
   sed \
     -e "s|__INSTALL_DIR__|${INSTALL_DIR}|g" \
+    -e "s|__RUN_HOME__|${RUN_HOME}|g" \
     "${INSTALL_DIR}/packaging/cec-tray.desktop.in" > "${desktop_path}"
   chown "${RUN_USER}:${run_group}" "${desktop_path}"
   chmod 0644 "${desktop_path}"

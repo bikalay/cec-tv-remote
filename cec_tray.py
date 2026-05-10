@@ -1,13 +1,37 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
 import threading
 import time
 
-import pystray
-from PIL import Image, ImageDraw
+LOG_DIR = Path.home() / ".cache" / "cec-tv-remote"
+LOG_FILE = LOG_DIR / "cec-tray.log"
+
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
+LOGGER = logging.getLogger("cec_tray")
+
+if not os.environ.get("DISPLAY"):
+    os.environ["DISPLAY"] = ":0"
+
+xauthority = Path.home() / ".Xauthority"
+if not os.environ.get("XAUTHORITY") and xauthority.exists():
+    os.environ["XAUTHORITY"] = str(xauthority)
+
+import pystray # type: ignore[import]
+from PIL import Image, ImageDraw # type: ignore[import]
 
 from config import load_app_config
 
 CONFIG = load_app_config()
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
 def make_icon(bg: str, fg: str) -> Image.Image:
@@ -18,9 +42,15 @@ def make_icon(bg: str, fg: str) -> Image.Image:
     return img
 
 
+def load_icon(name: str) -> Image.Image:
+    path = ASSETS_DIR / name
+    with Image.open(path) as img:
+        return img.convert("RGBA")
+
+
 ICONS = {
-    "mouse": make_icon("#2e7d32", "#a5d6a7"),
-    "keyboard": make_icon("#1565c0", "#90caf9"),
+    "mouse": load_icon("mouse.png"),
+    "keyboard": load_icon("keyboard.png"),
     "unknown": make_icon("#616161", "#bdbdbd"),
 }
 
@@ -31,7 +61,7 @@ def read_mode() -> str:
         if value in ("mouse", "keyboard"):
             return value
     except Exception:
-        pass
+        LOGGER.exception("Failed to read mode from %s", CONFIG.state_file)
     return "unknown"
 
 
@@ -48,6 +78,12 @@ def on_quit(icon: pystray.Icon, item) -> None:
 
 
 def setup(icon: pystray.Icon) -> None:
+    LOGGER.info(
+        "Starting tray: display=%s xauthority=%s state_file=%s",
+        os.environ.get("DISPLAY", ""),
+        os.environ.get("XAUTHORITY", ""),
+        CONFIG.state_file,
+    )
     icon.visible = True
 
     def poll() -> None:
@@ -73,4 +109,8 @@ icon = pystray.Icon(
     ),
 )
 
-icon.run(setup=setup)
+try:
+    icon.run(setup=setup)
+except Exception:
+    LOGGER.exception("Tray startup failed")
+    raise

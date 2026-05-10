@@ -1,5 +1,5 @@
 [Desktop Entry]
 Type=Application
 Name=CEC Tray
-Exec=__INSTALL_DIR__/.venv/bin/python __INSTALL_DIR__/cec_tray.py
+Exec=env DISPLAY=:0 XAUTHORITY=__RUN_HOME__/.Xauthority __INSTALL_DIR__/.venv/bin/python __INSTALL_DIR__/cec_tray.py
 X-GNOME-Autostart-enabled=true

@@ -104,6 +104,7 @@ sudo ./install.sh --user pi
 - systemd service: `/etc/systemd/system/cec-tv-remote.service`
 - user config: `~/.config/cec-tv-remote/config.toml`
 - tray autostart: `~/.config/autostart/cec-tray.desktop`
+- tray log: `~/.cache/cec-tv-remote/cec-tray.log`
 
 ## Service Management
 
@@ -114,6 +115,16 @@ systemctl status cec-tv-remote.service
 systemctl restart cec-tv-remote.service
 journalctl -u cec-tv-remote.service -f
 ```
+
+For the tray app, inspect:
+
+```bash
+tail -f ~/.cache/cec-tv-remote/cec-tray.log
+```
+
+The tray autostart entry launches the app with `DISPLAY=:0` and
+`XAUTHORITY=~/.Xauthority` for typical Raspberry Pi desktop sessions.
+`cec_tray.py` also keeps a Python-side fallback if those variables are missing.
 
 ## Configuration
 

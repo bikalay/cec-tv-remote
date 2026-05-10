@@ -14,10 +14,13 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${PAYLOAD_DIR}/packaging"
+mkdir -p "${PAYLOAD_DIR}/assets"
 
 cp -a "${ROOT_DIR}/cec_remote.py" "${PAYLOAD_DIR}/cec_remote.py"
 cp -a "${ROOT_DIR}/cec_tray.py" "${PAYLOAD_DIR}/cec_tray.py"
 cp -a "${ROOT_DIR}/config.py" "${PAYLOAD_DIR}/config.py"
+cp -a "${ROOT_DIR}/assets/mouse.png" "${PAYLOAD_DIR}/assets/mouse.png"
+cp -a "${ROOT_DIR}/assets/keyboard.png" "${PAYLOAD_DIR}/assets/keyboard.png"
 cp -a "${ROOT_DIR}/requirements.txt" "${PAYLOAD_DIR}/requirements.txt"
 cp -a "${ROOT_DIR}/README.md" "${PAYLOAD_DIR}/README.md"
 cp -a "${ROOT_DIR}/install.sh" "${PAYLOAD_DIR}/install.sh"

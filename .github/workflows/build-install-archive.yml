@@ -32,9 +32,12 @@ jobs:
       - name: Prepare archive staging directory
         run: |
           mkdir -p dist/cec-tv-remote
+          mkdir -p dist/cec-tv-remote/assets
           cp cec_remote.py dist/cec-tv-remote/
           cp cec_tray.py dist/cec-tv-remote/
           cp config.py dist/cec-tv-remote/
+          cp assets/mouse.png dist/cec-tv-remote/assets/
+          cp assets/keyboard.png dist/cec-tv-remote/assets/
           cp requirements.txt dist/cec-tv-remote/
           cp README.md dist/cec-tv-remote/
           cp install.sh dist/cec-tv-remote/
